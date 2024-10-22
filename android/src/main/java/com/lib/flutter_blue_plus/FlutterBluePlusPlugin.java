@@ -1497,6 +1497,7 @@ public class FlutterBluePlusPlugin implements
         }
     }
 
+    @SuppressLint("MissingPermission")
     void connectToEvie(String remoteId, boolean autoConnect){
         // already connecting?
         if (mCurrentlyConnectingDevices.get(remoteId) != null) {
@@ -1511,8 +1512,6 @@ public class FlutterBluePlusPlugin implements
             connectResult.success(false);  // no work to do
             return;
         }
-
-        requestBatteryExclusion();
 
         // wait if any device is bonding (increases reliability)
         waitIfBonding();
@@ -1542,6 +1541,15 @@ public class FlutterBluePlusPlugin implements
             mAutoConnected.remove(remoteId);
         }
 
+
+        CompanionDeviceManager companionDeviceManager =
+                (CompanionDeviceManager) activityBinding.getActivity()
+                        .getSystemService(Context.COMPANION_DEVICE_SERVICE);
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            companionDeviceManager.startObservingDevicePresence(remoteId.toUpperCase());
+        }
+
         connectResult.success(true);
     }
 
@@ -1564,6 +1572,12 @@ public class FlutterBluePlusPlugin implements
             log(LogLevel.INFO, "Device " + macAddress + " is already associated with the app");
             connectToEvie(macAddress, autoConnect);
             return;
+        }
+
+        try{
+            companionDeviceManager.stopObservingDevicePresence(macAddress.toUpperCase());
+        }catch (Exception ignored){
+
         }
 
         try {
