@@ -736,22 +736,22 @@ public class FlutterBluePlusPlugin implements
                             (CompanionDeviceManager) activityBinding.getActivity()
                                     .getSystemService(Context.COMPANION_DEVICE_SERVICE);
 
-                    boolean isAssociated
                     List<String> existingBoundDevices = companionDeviceManager.getAssociations();
                     if (existingBoundDevices.contains(remoteId)) {
                         log(LogLevel.INFO, "Device " + remoteId + " is already associated with the app");
-                    }
+                        try{
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                companionDeviceManager.stopObservingDevicePresence(remoteId.toUpperCase());
+                            }
+                        }catch (Exception ignored){
 
-                    try{
-                        companionDeviceManager.stopObservingDevicePresence(macAddress.toUpperCase());
-                    }catch (Exception ignored){
+                        }
 
-                    }
+                        try {
+                            companionDeviceManager.disassociate(remoteId.toUpperCase());
+                        }catch (Exception ignored){
 
-                    try {
-                        companionDeviceManager.disassociate(macAddress.toUpperCase());
-                    }catch (Exception ignored){
-
+                        }
                     }
 
                     // already disconnected?
@@ -1597,7 +1597,9 @@ public class FlutterBluePlusPlugin implements
         }
 
         try{
-            companionDeviceManager.stopObservingDevicePresence(macAddress.toUpperCase());
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                companionDeviceManager.stopObservingDevicePresence(macAddress.toUpperCase());
+            }
         }catch (Exception ignored){
 
         }
