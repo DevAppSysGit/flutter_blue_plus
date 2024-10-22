@@ -2,7 +2,7 @@
 // All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-part of flutter_blue_plus;
+part of '../flutter_blue_plus.dart';
 
 class FlutterBluePlus {
   ///////////////////
@@ -12,7 +12,7 @@ class FlutterBluePlus {
   static bool _initialized = false;
 
   /// native platform channel
-  static final MethodChannel _methodChannel = const MethodChannel('flutter_blue_plus/methods');
+  static const MethodChannel _methodChannel = MethodChannel('flutter_blue_plus/methods');
 
   /// a broadcast stream version of the MethodChannel
   // ignore: close_sinks
@@ -150,9 +150,7 @@ class FlutterBluePlus {
       var result = await _invokeMethod('getAdapterState');
       var value = BmBluetoothAdapterState.fromMap(result).adapterState;
       // update _adapterStateNow if it is still null after the await
-      if (_adapterStateNow == null) {
-        _adapterStateNow = value;
-      }
+      _adapterStateNow ??= value;
     }
 
     yield* FlutterBluePlus._methodStream.stream
@@ -295,7 +293,7 @@ class FlutterBluePlus {
 
       // check every 250ms for gone devices?
       late Stream<BmScanResponse?> outputStream = removeIfGone != null
-          ? _mergeStreams([_scanBuffer!.stream, Stream.periodic(Duration(milliseconds: 250))])
+          ? _mergeStreams([_scanBuffer!.stream, Stream.periodic(const Duration(milliseconds: 250))])
           : _scanBuffer!.stream;
 
       // start by pushing an empty array
@@ -367,7 +365,7 @@ class FlutterBluePlus {
       if (isScanningNow) {
         await _stopScan();
       } else if (_logLevel.index >= LogLevel.info.index) {
-        print("[FBP] stopScan: already stopped");
+        debugPrint("[FBP] stopScan: already stopped");
       }
     } finally {
       mtx.give();
@@ -426,9 +424,9 @@ class FlutterBluePlus {
 
     // flutter restart - wait for all devices to disconnect
     if ((await _methodChannel.invokeMethod('flutterRestart')) != 0) {
-      await Future.delayed(Duration(milliseconds: 50));
+      await Future.delayed(const Duration(milliseconds: 50));
       while ((await _methodChannel.invokeMethod('connectedCount')) != 0) {
-        await Future.delayed(Duration(milliseconds: 50));
+        await Future.delayed(const Duration(milliseconds: 50));
       }
     }
   }
@@ -440,7 +438,7 @@ class FlutterBluePlus {
       String result = call.arguments.toString();
       func = _logColor ? _black(func) : func;
       result = _logColor ? _brown(result) : result;
-      print("[FBP] $func result: $result");
+      debugPrint("[FBP] $func result: $result");
     }
 
     // android only
@@ -459,7 +457,7 @@ class FlutterBluePlus {
         for (DeviceIdentifier d in _autoConnect) {
           BluetoothDevice(remoteId: d).connect(autoConnect: true, mtu: null).onError((e, s) {
             if (logLevel != LogLevel.none) {
-              print("[FBP] [AutoConnect] connection failed: $e");
+              debugPrint("[FBP] [AutoConnect] connection failed: $e");
             }
           });
         }
@@ -501,7 +499,7 @@ class FlutterBluePlus {
               var d = BluetoothDevice(remoteId: r.remoteId);
               d.connect(autoConnect: true, mtu: null).onError((e, s) {
                 if (logLevel != LogLevel.none) {
-                  print("[FBP] [AutoConnect] connection failed: $e");
+                  debugPrint("[FBP] [AutoConnect] connection failed: $e");
                 }
               });
             }
@@ -607,7 +605,7 @@ class FlutterBluePlus {
         String args = arguments.toString();
         func = _logColor ? _black(func) : func;
         args = _logColor ? _magenta(args) : args;
-        print("[FBP] $func args: $args");
+        debugPrint("[FBP] $func args: $args");
       }
 
       // invoke
@@ -619,7 +617,7 @@ class FlutterBluePlus {
         String result = out.toString();
         func = _logColor ? _black(func) : func;
         result = _logColor ? _brown(result) : result;
-        print("[FBP] $func result: $result");
+        debugPrint("[FBP] $func result: $result");
       }
     } finally {
       mtx.give();
@@ -657,7 +655,7 @@ class FlutterBluePlus {
   static Future<List<BluetoothDevice>> get connectedSystemDevices => systemDevices([Guid("1800")]);
 
   @Deprecated('No longer needed, remove this from your code')
-  static void get instance => null;
+  static void get instance {}
 
   @Deprecated('Use isSupported instead')
   static Future<bool> get isAvailable async => await isSupported;

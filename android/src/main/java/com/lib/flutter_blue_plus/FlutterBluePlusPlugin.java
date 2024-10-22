@@ -4,10 +4,15 @@
 
 package com.lib.flutter_blue_plus;
 
+import static android.companion.AssociationRequest.DEVICE_PROFILE_APP_STREAMING;
+import static android.content.Context.POWER_SERVICE;
+
 import android.Manifest;
+import android.annotation.SuppressLint;
 import android.annotation.TargetApi;
 import android.app.Activity;
 import android.app.Application;
+import android.app.role.RoleManager;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothGatt;
@@ -24,51 +29,48 @@ import android.bluetooth.le.ScanFilter;
 import android.bluetooth.le.ScanResult;
 import android.bluetooth.le.ScanRecord;
 import android.bluetooth.le.ScanSettings;
+import android.companion.AssociationInfo;
+import android.companion.AssociationRequest;
+import android.companion.BluetoothLeDeviceFilter;
+import android.companion.CompanionDeviceManager;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.IntentSender;
 import android.content.pm.PackageManager;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.ParcelUuid;
+import android.os.PowerManager;
+import android.provider.Settings;
 import android.util.Log;
-import android.util.SparseArray;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
-import java.util.Timer;
-import java.util.TimerTask;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Semaphore;
 import java.io.StringWriter;
 import java.io.PrintWriter;
-import java.io.UnsupportedEncodingException;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
-import java.nio.charset.StandardCharsets;
 
 import java.lang.reflect.Method;
 
 import androidx.annotation.NonNull;
-import androidx.annotation.RequiresApi;
+import androidx.annotation.Nullable;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
 import io.flutter.embedding.engine.plugins.FlutterPlugin;
 import io.flutter.embedding.engine.plugins.activity.ActivityAware;
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding;
-import io.flutter.plugin.common.BinaryMessenger;
-import io.flutter.plugin.common.EventChannel;
-import io.flutter.plugin.common.EventChannel.EventSink;
-import io.flutter.plugin.common.EventChannel.StreamHandler;
 import io.flutter.plugin.common.MethodCall;
 import io.flutter.plugin.common.MethodChannel;
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler;
@@ -115,7 +117,11 @@ public class FlutterBluePlusPlugin implements
     private final Map<Integer, OperationOnPermission> operationsOnPermission = new HashMap<>();
     private int lastEventId = 1452;
 
+    private final int requestBatteryExclusionCode = 1879842616;
     private final int enableBluetoothRequestCode = 1879842617;
+    private final int requestCodeCompanionDeviceManager = 1557;
+
+    private Result connectResult;
 
     private interface OperationOnPermission {
         void op(boolean granted, String permission);
@@ -266,6 +272,18 @@ public class FlutterBluePlusPlugin implements
         activityBinding = null;
     }
 
+    private void requestBatteryExclusion() {
+        Log.d(TAG,"requestBatteryExclusion");
+        PowerManager powerManager = (PowerManager) context.getSystemService(POWER_SERVICE);
+        if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            if (!powerManager.isIgnoringBatteryOptimizations(context.getPackageName())) {
+                Intent batteryOptimizationIntent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+                batteryOptimizationIntent.setData(Uri.parse("package:" + context.getPackageName()));
+                activityBinding.getActivity().startActivityForResult(batteryOptimizationIntent, requestBatteryExclusionCode);
+            }
+        }
+    }
+
     ////////////////////////////////////////////////////////////
     // ███    ███  ███████  ████████  ██   ██   ██████   ██████
     // ████  ████  ██          ██     ██   ██  ██    ██  ██   ██
@@ -279,6 +297,7 @@ public class FlutterBluePlusPlugin implements
     // ██       ██   ██  ██       ██
     //  ██████  ██   ██  ███████  ███████
 
+    @SuppressLint("MissingPermission")
     @Override
     @SuppressWarnings({"deprecation", "unchecked"}) // needed for compatibility, type safety uses bluetooth_msgs.dart
     public void onMethodCall(@NonNull MethodCall call,
@@ -382,6 +401,9 @@ public class FlutterBluePlusPlugin implements
                         permissions.add(Manifest.permission.BLUETOOTH);
                     }
 
+                    permissions.add(Manifest.permission.REQUEST_COMPANION_PROFILE_WATCH);
+                    permissions.add(Manifest.permission.REQUEST_OBSERVE_COMPANION_DEVICE_PRESENCE);
+
                     ensurePermissions(permissions, (granted, perm) -> {
 
                         String adapterName = mBluetoothAdapter != null ? mBluetoothAdapter.getName() : "N/A";
@@ -419,6 +441,15 @@ public class FlutterBluePlusPlugin implements
                         permissions.add(Manifest.permission.BLUETOOTH);
                     }
 
+                    permissions.add(Manifest.permission.BLUETOOTH_ADMIN);
+                    permissions.add(Manifest.permission.WAKE_LOCK);
+
+                    // Some old phones complain about requesting perms they don't understand
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        permissions.add(Manifest.permission.REQUEST_COMPANION_RUN_IN_BACKGROUND);
+                        permissions.add(Manifest.permission.REQUEST_COMPANION_USE_DATA_IN_BACKGROUND);
+                    }
+
                     ensurePermissions(permissions, (granted, perm) -> {
 
                         if (granted == false) {
@@ -437,7 +468,6 @@ public class FlutterBluePlusPlugin implements
                         activityBinding.getActivity().startActivityForResult(enableBtIntent, enableBluetoothRequestCode);
 
                         result.success(true);
-                        return;
                     });
                     break;
                 }
@@ -675,7 +705,7 @@ public class FlutterBluePlusPlugin implements
 
                     ArrayList<String> permissions = new ArrayList<>();
 
-                    if (Build.VERSION.SDK_INT >= 31) { // Android 12 (October 2021)
+                    if (Build.VERSION.SDK_INT >= 31) {
                         permissions.add(Manifest.permission.BLUETOOTH_CONNECT);
                     }
 
@@ -693,49 +723,7 @@ public class FlutterBluePlusPlugin implements
                             return;
                         }
 
-                        // already connecting?
-                        if (mCurrentlyConnectingDevices.get(remoteId) != null) {
-                            log(LogLevel.DEBUG, "already connecting");
-                            result.success(true);  // still work to do
-                            return;
-                        }
-
-                        // already connected?
-                        if (mConnectedDevices.get(remoteId) != null) {
-                            log(LogLevel.DEBUG, "already connected");
-                            result.success(false);  // no work to do
-                            return;
-                        }
-
-                        // wait if any device is bonding (increases reliability)
-                        waitIfBonding();
-
-                        // connect
-                        BluetoothGatt gatt = null;
-                        BluetoothDevice device = mBluetoothAdapter.getRemoteDevice(remoteId);
-                        if (Build.VERSION.SDK_INT >= 23) { // Android 6.0 (October 2015)
-                            gatt = device.connectGatt(context, autoConnect, mGattCallback, BluetoothDevice.TRANSPORT_LE);
-                        } else {
-                            gatt = device.connectGatt(context, autoConnect, mGattCallback);
-                        }
-
-                        // error check
-                        if (gatt == null) {
-                            result.error("connect", String.format("device.connectGatt returned null"), null);
-                            return;
-                        }
-
-                        // add to currently connecting peripherals
-                        mCurrentlyConnectingDevices.put(remoteId, gatt);
-
-                        // remember autoconnect
-                        if (autoConnect) {
-                            mAutoConnected.put(remoteId, gatt);
-                        } else {
-                            mAutoConnected.remove(remoteId);
-                        }
-
-                        result.success(true);
+                        associateWithCompanionDeviceManager(remoteId, autoConnect, result);
                     });
                     break;
                 }
@@ -1477,6 +1465,155 @@ public class FlutterBluePlusPlugin implements
         }
     }
 
+    private void processCompanionDeviceResult(Integer resultCode, Intent data) {
+        if (resultCode != Activity.RESULT_OK || data == null) {
+            connectResult.success(false);
+            return;
+        }
+        String macAddress = null;
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            macAddress = Objects.requireNonNull(((AssociationInfo) Objects.requireNonNull(data.getParcelableExtra(
+                    CompanionDeviceManager.EXTRA_ASSOCIATION,
+                    AssociationInfo.class))).getDeviceMacAddress()).toString();
+        } else {
+            // Below Android 33 the result returns either a BLE ScanResult, a
+            // Classic BluetoothDevice or a Wifi ScanResult
+            // In our case we are looking for our BLE GATT server so we can cast directly
+            // to the BLE ScanResult
+            ScanResult scanResult = data.getParcelableExtra(CompanionDeviceManager.EXTRA_DEVICE);
+            if (scanResult != null) {
+                macAddress = scanResult.getDevice().getAddress();
+            }
+        }
+
+        log(LogLevel.INFO, "Received macAddress " + macAddress);
+        if (macAddress != null) {
+            boolean autoConnectParameter = Boolean.TRUE.equals(data.getParcelableExtra("autoConnect"));
+            connectToEvie(macAddress.toUpperCase(), autoConnectParameter);
+            log(LogLevel.INFO, "Companion Device Result received");
+        } else {
+            connectResult.success(false);
+        }
+    }
+
+    void connectToEvie(String remoteId, boolean autoConnect){
+        // already connecting?
+        if (mCurrentlyConnectingDevices.get(remoteId) != null) {
+            log(LogLevel.DEBUG, "already connecting");
+            connectResult.success(true);  // still work to do
+            return;
+        }
+
+        // already connected?
+        if (mConnectedDevices.get(remoteId) != null) {
+            log(LogLevel.DEBUG, "already connected");
+            connectResult.success(false);  // no work to do
+            return;
+        }
+
+        requestBatteryExclusion();
+
+        // wait if any device is bonding (increases reliability)
+        waitIfBonding();
+
+        // connect
+        BluetoothGatt gatt = null;
+        BluetoothDevice device = mBluetoothAdapter.getRemoteDevice(remoteId);
+        if (Build.VERSION.SDK_INT >= 23) { // Android 6.0 (October 2015)
+            gatt = device.connectGatt(context, autoConnect, mGattCallback, BluetoothDevice.TRANSPORT_LE);
+        } else {
+            gatt = device.connectGatt(context, autoConnect, mGattCallback);
+        }
+
+        // error check
+        if (gatt == null) {
+            connectResult.error("connect", String.format("device.connectGatt returned null"), null);
+            return;
+        }
+
+        // add to currently connecting peripherals
+        mCurrentlyConnectingDevices.put(remoteId, gatt);
+
+        // remember autoconnect
+        if (autoConnect) {
+            mAutoConnected.put(remoteId, gatt);
+        } else {
+            mAutoConnected.remove(remoteId);
+        }
+
+        connectResult.success(true);
+    }
+
+    @SuppressLint("MissingPermission")
+    void associateWithCompanionDeviceManager(String macAddress,
+                                             boolean autoConnect,
+                                             Result result){
+        if (!macAddress.contains(":")) {
+            log(LogLevel.WARNING, "Invalid remote macAddress " + macAddress);
+            return;
+        }
+
+        this.connectResult = result;
+        CompanionDeviceManager companionDeviceManager =
+                (CompanionDeviceManager) activityBinding.getActivity()
+                        .getSystemService(Context.COMPANION_DEVICE_SERVICE);
+
+        List<String> existingBoundDevices = companionDeviceManager.getAssociations();
+        if (existingBoundDevices.contains(macAddress)) {
+            log(LogLevel.INFO, "Device " + macAddress + " is already associated with the app");
+            connectToEvie(macAddress, autoConnect);
+            return;
+        }
+
+        try {
+            companionDeviceManager.disassociate(macAddress.toUpperCase());
+        }catch (Exception ignored){
+
+        }
+
+        BluetoothDevice device = mBluetoothAdapter.getRemoteDevice(macAddress);
+        log(LogLevel.INFO, "Trying to associate with " + device.getName());
+
+        BluetoothLeDeviceFilter filter  = new BluetoothLeDeviceFilter.Builder()
+                .setScanFilter(new ScanFilter.Builder().setDeviceAddress(macAddress).build())
+                .build();
+
+        AssociationRequest associationRequest = new AssociationRequest.Builder()
+                .addDeviceFilter(filter)
+                .setSingleDevice(true)
+                .build();
+
+        Activity activity = activityBinding.getActivity();
+
+        companionDeviceManager.associate(associationRequest,
+                new CompanionDeviceManager.Callback() {
+            @Override
+            public void onDeviceFound(@NonNull IntentSender intentSender) {
+                try {
+                    Intent btCompanionIntent = new Intent();
+                    btCompanionIntent.putExtra("autoConnect", autoConnect);
+                    activity.startIntentSenderForResult(
+                            intentSender,
+                            requestCodeCompanionDeviceManager,
+                            btCompanionIntent,
+                            0,
+                            0,
+                            0
+                    );
+                } catch (IntentSender.SendIntentException e) {
+                    e.printStackTrace();
+                }
+            }
+
+            @Override
+            public void onFailure(@Nullable CharSequence charSequence) {
+                log(LogLevel.ERROR, "Device association failure $error");
+                connectResult.success(false);
+            }
+        }, null);
+    }
+
    //////////////////////////////////////////////////////////////////////
    //  █████    ██████  ████████  ██  ██    ██  ██  ████████  ██    ██
    // ██   ██  ██          ██     ██  ██    ██  ██     ██      ██  ██
@@ -1502,6 +1639,12 @@ public class FlutterBluePlusPlugin implements
             invokeMethodUIThread("OnTurnOnResponse", map);
 
             return true;
+        }
+        if (requestCode == requestCodeCompanionDeviceManager) {
+            processCompanionDeviceResult(resultCode, data);
+        }
+        if (requestCode == requestBatteryExclusionCode) {
+            log(LogLevel.INFO, "Battery optimization result received");
         }
 
         return false; // did not handle anything

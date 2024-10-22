@@ -148,7 +148,7 @@ class BluetoothDevice {
             .fbpTimeout(timeout.inSeconds, "connect")
             .catchError((e) async {
           if (e is FlutterBluePlusException && e.code == FbpErrorCode.timeout.index) {
-            print("[FBP] connection timeout");
+            debugPrint("[FBP] connection timeout");
             await FlutterBluePlus._invokeMethod('disconnect', remoteId.str); // cancel connection attempt
           }
           throw e;
@@ -357,7 +357,7 @@ class BluetoothDevice {
         .map((m) => m.arguments)
         .map((args) => BmBluetoothDevice.fromMap(args))
         .where((p) => p.remoteId == remoteId)
-        .map((m) => null);
+        .map((m) {});
   }
 
   /// Read the RSSI of connected remote device
@@ -698,7 +698,7 @@ class BluetoothDevice {
         Duration elapsed = DateTime.now().difference(FlutterBluePlus._connectTimestamp[remoteId]!);
         if (elapsed.compareTo(minGap) < 0) {
           Duration timeLeft = minGap - elapsed;
-          print("[FBP] disconnect: enforcing ${minGap.inMilliseconds}ms disconnect gap, delaying "
+          debugPrint("[FBP] disconnect: enforcing ${minGap.inMilliseconds}ms disconnect gap, delaying "
               "${timeLeft.inMilliseconds}ms");
           await Future<void>.delayed(timeLeft);
         }

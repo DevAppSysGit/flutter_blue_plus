@@ -2,7 +2,7 @@
 // All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-part of flutter_blue_plus;
+part of '../flutter_blue_plus.dart';
 
 final Guid cccdUuid = Guid("00002902-0000-1000-8000-00805f9b34fb");
 
@@ -22,7 +22,7 @@ class BluetoothCharacteristic {
   BluetoothCharacteristic.fromProto(BmBluetoothCharacteristic p)
       : remoteId = p.remoteId,
         serviceUuid = p.serviceUuid,
-        secondaryServiceUuid = p.secondaryServiceUuid != null ? p.secondaryServiceUuid! : null,
+        secondaryServiceUuid = p.secondaryServiceUuid,
         characteristicUuid = p.characteristicUuid;
 
   /// convenience accessor
@@ -33,7 +33,7 @@ class BluetoothCharacteristic {
 
   /// Get Properties from known services
   CharacteristicProperties get properties {
-    return _bmchr != null ? CharacteristicProperties.fromProto(_bmchr!.properties) : CharacteristicProperties();
+    return _bmchr != null ? CharacteristicProperties.fromProto(_bmchr!.properties) : const CharacteristicProperties();
   }
 
   /// Get Descriptors from known services
