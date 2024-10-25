@@ -297,7 +297,6 @@ public class FlutterBluePlusPlugin implements
     // ██       ██   ██  ██       ██
     //  ██████  ██   ██  ███████  ███████
 
-    @SuppressLint("MissingPermission")
     @Override
     @SuppressWarnings({"deprecation", "unchecked"}) // needed for compatibility, type safety uses bluetooth_msgs.dart
     public void onMethodCall(@NonNull MethodCall call,
@@ -703,6 +702,10 @@ public class FlutterBluePlusPlugin implements
                     String remoteId =    (String) args.get("remote_id");
                     boolean autoConnect = ((int) args.get("auto_connect")) != 0;
 
+                    /*
+                     * More parameters
+                     */
+
                     ArrayList<String> permissions = new ArrayList<>();
 
                     if (Build.VERSION.SDK_INT >= 31) {
@@ -723,7 +726,11 @@ public class FlutterBluePlusPlugin implements
                             return;
                         }
 
-                        associateWithCompanionDeviceManager(remoteId, autoConnect, result);
+                        if(activityBinding.getActivity() != null) {
+                            associateWithCompanionDeviceManager(remoteId, autoConnect, result);
+                        } else {
+                            connectToEvie(remoteId.toUpperCase(), autoConnect);
+                        }
                     });
                     break;
                 }
@@ -1563,13 +1570,14 @@ public class FlutterBluePlusPlugin implements
             mAutoConnected.remove(remoteId);
         }
 
+        if(activityBinding.getActivity() != null){
+            CompanionDeviceManager companionDeviceManager =
+                    (CompanionDeviceManager) activityBinding.getActivity()
+                            .getSystemService(Context.COMPANION_DEVICE_SERVICE);
 
-        CompanionDeviceManager companionDeviceManager =
-                (CompanionDeviceManager) activityBinding.getActivity()
-                        .getSystemService(Context.COMPANION_DEVICE_SERVICE);
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            companionDeviceManager.startObservingDevicePresence(remoteId.toUpperCase());
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                companionDeviceManager.startObservingDevicePresence(remoteId.toUpperCase());
+            }
         }
 
         connectResult.success(true);
@@ -1646,7 +1654,7 @@ public class FlutterBluePlusPlugin implements
 
             @Override
             public void onFailure(@Nullable CharSequence charSequence) {
-                log(LogLevel.ERROR, "Device association failure $error");
+                log(LogLevel.ERROR, "Device association failure");
                 connectResult.success(false);
             }
         }, null);
