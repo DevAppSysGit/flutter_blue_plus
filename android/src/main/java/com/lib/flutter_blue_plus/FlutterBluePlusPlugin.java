@@ -274,13 +274,17 @@ public class FlutterBluePlusPlugin implements
 
     private void requestBatteryExclusion() {
         Log.d(TAG,"requestBatteryExclusion");
-        PowerManager powerManager = (PowerManager) context.getSystemService(POWER_SERVICE);
-        if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            if (!powerManager.isIgnoringBatteryOptimizations(context.getPackageName())) {
-                Intent batteryOptimizationIntent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
-                batteryOptimizationIntent.setData(Uri.parse("package:" + context.getPackageName()));
-                activityBinding.getActivity().startActivityForResult(batteryOptimizationIntent, requestBatteryExclusionCode);
+        Intent intent = new Intent();
+        if(activityBinding != null && activityBinding.getActivity() != null) {
+            String packageName = activityBinding.getActivity().getPackageName();
+            PowerManager pm = (PowerManager) activityBinding.getActivity().getSystemService(Context.POWER_SERVICE);
+            if (pm.isIgnoringBatteryOptimizations(packageName))
+                intent.setAction(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS);
+            else {
+                intent.setAction(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+                intent.setData(Uri.parse("package:" + packageName));
             }
+            activityBinding.getActivity().startActivityForResult(intent, requestBatteryExclusionCode);
         }
     }
 
@@ -711,6 +715,8 @@ public class FlutterBluePlusPlugin implements
                     if (Build.VERSION.SDK_INT >= 31) {
                         permissions.add(Manifest.permission.BLUETOOTH_CONNECT);
                     }
+
+                    requestBatteryExclusion();
 
                     ensurePermissions(permissions, (granted, perm) -> {
 
@@ -1655,7 +1661,7 @@ public class FlutterBluePlusPlugin implements
             @Override
             public void onFailure(@Nullable CharSequence charSequence) {
                 log(LogLevel.ERROR, "Device association failure");
-                connectResult.success(false);
+                connectToEvie(macAddress.toUpperCase(), autoConnect);
             }
         }, null);
     }
@@ -1687,10 +1693,14 @@ public class FlutterBluePlusPlugin implements
             return true;
         }
         if (requestCode == requestCodeCompanionDeviceManager) {
-            processCompanionDeviceResult(resultCode, data);
+            if(resultCode == Activity.RESULT_OK) {
+                processCompanionDeviceResult(resultCode, data);
+            }
+            return true;
         }
         if (requestCode == requestBatteryExclusionCode) {
             log(LogLevel.INFO, "Battery optimization result received");
+            return true;
         }
 
         return false; // did not handle anything
