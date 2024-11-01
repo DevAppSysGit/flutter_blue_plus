@@ -197,16 +197,19 @@ class BmScanResponse {
 class BmConnectRequest {
   DeviceIdentifier remoteId;
   bool autoConnect;
+  bool batteryExclusion;
 
   BmConnectRequest({
     required this.remoteId,
     required this.autoConnect,
+    required this.batteryExclusion
   });
 
   Map<dynamic, dynamic> toMap() {
     final Map<dynamic, dynamic> data = {};
     data['remote_id'] = remoteId.str;
     data['auto_connect'] = autoConnect ? 1 : 0;
+    data['battery_exclusion'] = batteryExclusion ? 1 : 0;
     return data;
   }
 }

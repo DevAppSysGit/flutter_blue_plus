@@ -274,17 +274,13 @@ public class FlutterBluePlusPlugin implements
 
     private void requestBatteryExclusion() {
         Log.d(TAG,"requestBatteryExclusion");
-        Intent intent = new Intent();
-        if(activityBinding != null && activityBinding.getActivity() != null) {
-            String packageName = activityBinding.getActivity().getPackageName();
-            PowerManager pm = (PowerManager) activityBinding.getActivity().getSystemService(Context.POWER_SERVICE);
-            if (pm.isIgnoringBatteryOptimizations(packageName))
-                intent.setAction(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS);
-            else {
-                intent.setAction(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
-                intent.setData(Uri.parse("package:" + packageName));
+        PowerManager powerManager = (PowerManager) context.getSystemService(POWER_SERVICE);
+        if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            if (!powerManager.isIgnoringBatteryOptimizations(context.getPackageName())) {
+                Intent batteryOptimizationIntent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+                batteryOptimizationIntent.setData(Uri.parse("package:" + context.getPackageName()));
+                activityBinding.getActivity().startActivityForResult(batteryOptimizationIntent, requestBatteryExclusionCode);
             }
-            activityBinding.getActivity().startActivityForResult(intent, requestBatteryExclusionCode);
         }
     }
 
@@ -705,6 +701,7 @@ public class FlutterBluePlusPlugin implements
                     HashMap<String, Object> args = call.arguments();
                     String remoteId =    (String) args.get("remote_id");
                     boolean autoConnect = ((int) args.get("auto_connect")) != 0;
+                    boolean batteryExclusion = ((int) args.get("battery_exclusion")) != 0;
 
                     /*
                      * More parameters
@@ -716,7 +713,9 @@ public class FlutterBluePlusPlugin implements
                         permissions.add(Manifest.permission.BLUETOOTH_CONNECT);
                     }
 
-                    requestBatteryExclusion();
+                    if(batteryExclusion){
+                        requestBatteryExclusion();
+                    }
 
                     ensurePermissions(permissions, (granted, perm) -> {
 
