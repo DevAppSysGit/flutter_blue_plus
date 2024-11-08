@@ -289,7 +289,10 @@ class FlutterBluePlus {
       _scanBuffer = _BufferStream.listen(responseStream);
 
       // invoke platform method
-      await _invokeMethod('startScan', settings.toMap()).onError((e, s) => _stopScan(invokePlatform: false));
+      await _invokeMethod('startScan', settings.toMap()).onError((e, s) {
+        _stopScan(invokePlatform: false);
+        throw e!;
+      });
 
       // check every 250ms for gone devices?
       late Stream<BmScanResponse?> outputStream = removeIfGone != null
@@ -435,7 +438,14 @@ class FlutterBluePlus {
     // log result
     if (logLevel == LogLevel.verbose) {
       String func = '[[ ${call.method} ]]';
-      String result = call.arguments.toString();
+      String result;
+      if (call.method == 'OnDiscoveredServices') {
+        // this is really slow, so we can't
+        // pretty print anything that happens alot
+        result = _prettyPrint(call.arguments);
+      } else {
+        result = call.arguments.toString();
+      }
       func = _logColor ? _black(func) : func;
       result = _logColor ? _brown(result) : result;
       debugPrint("[FBP] $func result: $result");
@@ -613,7 +623,7 @@ class FlutterBluePlus {
 
       // log result
       if (logLevel == LogLevel.verbose) {
-        String func = '<$method>';
+        String func = '($method)';
         String result = out.toString();
         func = _logColor ? _black(func) : func;
         result = _logColor ? _brown(result) : result;
@@ -639,6 +649,15 @@ class FlutterBluePlus {
 
     // wait for response
     await futureResponse.fbpTimeout(timeout, "turnOff");
+  }
+
+  static String _prettyPrint(dynamic data) {
+    if (data is Map || data is List) {
+      const JsonEncoder encoder = JsonEncoder.withIndent('  ');
+      return encoder.convert(data);
+    } else {
+      return data.toString();
+    }
   }
 
   /// Checks if Bluetooth functionality is turned on
@@ -786,13 +805,17 @@ class AdvertisementData {
   final Map<Guid, List<int>> serviceData; // key: service guid
   final List<Guid> serviceUuids;
 
-  /// raw manufacturer specific data
+  /// for convenience, raw msd data
+  ///   * interprets the first two byte as raw data,
+  ///     as opposed to a `manufacturerId`
   List<List<int>> get msd {
-    List<List<int>> out = [];
-    manufacturerData.forEach((key, value) {
-      out.add([key & 0xFF, (key >> 8) & 0xFF] + value);
+    List<List<int>> output = [];
+    manufacturerData.forEach((manufacturerId, bytes) {
+      int low = manufacturerId & 0xFF;
+      int high = (manufacturerId >> 8) & 0xFF;
+      output.add([low, high] + bytes);
     });
-    return out;
+    return output;
   }
 
   AdvertisementData({
