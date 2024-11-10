@@ -1788,6 +1788,8 @@ public class FlutterBluePlusPlugin implements
     // ██    ██     ██     ██  ██            ██
     //  ██████      ██     ██  ███████  ███████
 
+    // for highest reliability, it is recommended to not do
+    // anything while the device is busy bonding.
     private void waitIfBonding() {
         int counter = 0;
         if (mBondingDevices.isEmpty() == false) {
@@ -1836,7 +1838,7 @@ public class FlutterBluePlusPlugin implements
         if(isSecondaryService) {
             secondaryService = getServiceFromArray(serviceUuid, primaryService.getIncludedServices());
             if(secondaryService == null) {
-                return new ChrFound(null, "secondary service not found '" + serviceUuid + "'");
+                return new ChrFound(null, "secondary service not found '" + serviceUuid + "' (primary service '" + primaryServiceUuid + "')");
             }
         }
 
@@ -2017,6 +2019,9 @@ public class FlutterBluePlusPlugin implements
         return 0;
     }
 
+    // The original android implementation has a bug - it does not 
+    // handle multiple of the same manufacturerId in the same advertisement.
+    // Here, we copy the iOS approach and append it to the same map entry.
     Map<Integer, byte[]> getManufacturerSpecificData(ScanRecord adv) {
         byte[] bytes = adv.getBytes();
         Map<Integer, byte[]> manufacturerDataMap = new HashMap<>();
