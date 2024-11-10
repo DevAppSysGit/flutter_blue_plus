@@ -97,6 +97,7 @@ class BluetoothDevice {
     int? mtu = 512,
     bool autoConnect = false,
     bool batteryExclusion = false,
+    bool useCompanion = true,
   }) async {
     // If you hit this assert, you must set `mtu:null`, i.e `device.connect(mtu:null, autoConnect:true)`
     // and you'll have to call `requestMtu` yourself. `autoConnect` is not compatibile with `mtu`.
@@ -120,6 +121,7 @@ class BluetoothDevice {
         remoteId: remoteId,
         autoConnect: autoConnect,
         batteryExclusion: batteryExclusion,
+        useCompanion: useCompanion,
       );
 
       var responseStream = FlutterBluePlus._methodStream.stream

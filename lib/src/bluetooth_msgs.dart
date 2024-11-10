@@ -198,11 +198,13 @@ class BmConnectRequest {
   DeviceIdentifier remoteId;
   bool autoConnect;
   bool batteryExclusion;
+  bool useCompanion;
 
   BmConnectRequest({
     required this.remoteId,
     required this.autoConnect,
-    required this.batteryExclusion
+    required this.batteryExclusion,
+    required this.useCompanion
   });
 
   Map<dynamic, dynamic> toMap() {
@@ -210,6 +212,7 @@ class BmConnectRequest {
     data['remote_id'] = remoteId.str;
     data['auto_connect'] = autoConnect ? 1 : 0;
     data['battery_exclusion'] = batteryExclusion ? 1 : 0;
+    data['use_companion'] = useCompanion ? 1 : 0;
     return data;
   }
 }

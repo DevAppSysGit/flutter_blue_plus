@@ -702,6 +702,7 @@ public class FlutterBluePlusPlugin implements
                     // see: BmConnectRequest
                     HashMap<String, Object> args = call.arguments();
                     String remoteId =    (String) args.get("remote_id");
+                    boolean useCompanion = ((int) args.get("use_companion")) != 0;
                     boolean autoConnect = ((int) args.get("auto_connect")) != 0;
                     boolean batteryExclusion = ((int) args.get("battery_exclusion")) != 0;
 
@@ -733,10 +734,11 @@ public class FlutterBluePlusPlugin implements
                             return;
                         }
 
-                        if(activityBinding.getActivity() != null) {
+                        if(activityBinding != null && activityBinding.getActivity() != null && useCompanion) {
                             associateWithCompanionDeviceManager(remoteId, autoConnect, result);
                         } else {
-                            connectToEvie(remoteId.toUpperCase(), autoConnect);
+                            this.connectResult = result;
+                            connectToEvie(remoteId.toUpperCase(), autoConnect, useCompanion);
                         }
                     });
                     break;
@@ -746,25 +748,27 @@ public class FlutterBluePlusPlugin implements
                 {
                     String remoteId = (String) call.arguments;
 
-                    CompanionDeviceManager companionDeviceManager =
-                            (CompanionDeviceManager) activityBinding.getActivity()
-                                    .getSystemService(Context.COMPANION_DEVICE_SERVICE);
+                    if(activityBinding != null && activityBinding.getActivity() != null) {
+                        CompanionDeviceManager companionDeviceManager =
+                                (CompanionDeviceManager) activityBinding.getActivity()
+                                        .getSystemService(Context.COMPANION_DEVICE_SERVICE);
 
-                    List<String> existingBoundDevices = companionDeviceManager.getAssociations();
-                    if (existingBoundDevices.contains(remoteId)) {
-                        log(LogLevel.INFO, "Device " + remoteId + " is already associated with the app");
-                        try{
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                                companionDeviceManager.stopObservingDevicePresence(remoteId.toUpperCase());
+                        List<String> existingBoundDevices = companionDeviceManager.getAssociations();
+                        if (existingBoundDevices.contains(remoteId)) {
+                            log(LogLevel.INFO, "Device " + remoteId + " is already associated with the app");
+                            try {
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                    companionDeviceManager.stopObservingDevicePresence(remoteId.toUpperCase());
+                                }
+                            } catch (Exception ignored) {
+
                             }
-                        }catch (Exception ignored){
 
-                        }
+                            try {
+                                companionDeviceManager.disassociate(remoteId.toUpperCase());
+                            } catch (Exception ignored) {
 
-                        try {
-                            companionDeviceManager.disassociate(remoteId.toUpperCase());
-                        }catch (Exception ignored){
-
+                            }
                         }
                     }
 
@@ -1529,7 +1533,7 @@ public class FlutterBluePlusPlugin implements
         log(LogLevel.INFO, "Received macAddress " + macAddress);
         if (macAddress != null) {
             boolean autoConnectParameter = Boolean.TRUE.equals(data.getParcelableExtra("autoConnect"));
-            connectToEvie(macAddress.toUpperCase(), autoConnectParameter);
+            connectToEvie(macAddress.toUpperCase(), autoConnectParameter, true);
             log(LogLevel.INFO, "Companion Device Result received");
         } else {
             connectResult.success(false);
@@ -1537,7 +1541,7 @@ public class FlutterBluePlusPlugin implements
     }
 
     @SuppressLint("MissingPermission")
-    void connectToEvie(String remoteId, boolean autoConnect){
+    void connectToEvie(String remoteId, boolean autoConnect, boolean useCompanion){
         // already connecting?
         if (mCurrentlyConnectingDevices.get(remoteId) != null) {
             log(LogLevel.DEBUG, "already connecting");
@@ -1580,7 +1584,7 @@ public class FlutterBluePlusPlugin implements
             mAutoConnected.remove(remoteId);
         }
 
-        if(activityBinding.getActivity() != null){
+        if(activityBinding != null && activityBinding.getActivity() != null && useCompanion){
             CompanionDeviceManager companionDeviceManager =
                     (CompanionDeviceManager) activityBinding.getActivity()
                             .getSystemService(Context.COMPANION_DEVICE_SERVICE);
@@ -1603,6 +1607,11 @@ public class FlutterBluePlusPlugin implements
         }
 
         this.connectResult = result;
+        if(activityBinding == null || activityBinding.getActivity() == null) {
+            log(LogLevel.INFO, "activity ot activity binding is null");
+            connectToEvie(macAddress, autoConnect, true);
+            return;
+        }
         CompanionDeviceManager companionDeviceManager =
                 (CompanionDeviceManager) activityBinding.getActivity()
                         .getSystemService(Context.COMPANION_DEVICE_SERVICE);
@@ -1610,7 +1619,7 @@ public class FlutterBluePlusPlugin implements
         List<String> existingBoundDevices = companionDeviceManager.getAssociations();
         if (existingBoundDevices.contains(macAddress)) {
             log(LogLevel.INFO, "Device " + macAddress + " is already associated with the app");
-            connectToEvie(macAddress, autoConnect);
+            connectToEvie(macAddress, autoConnect, true);
             return;
         }
 
@@ -1665,7 +1674,7 @@ public class FlutterBluePlusPlugin implements
             @Override
             public void onFailure(@Nullable CharSequence charSequence) {
                 log(LogLevel.ERROR, "Device association failure");
-                connectToEvie(macAddress.toUpperCase(), autoConnect);
+                connectToEvie(macAddress.toUpperCase(), autoConnect, false);
             }
         }, null);
     }
@@ -1763,15 +1772,17 @@ public class FlutterBluePlusPlugin implements
             return;
         }
 
-        // Store the operation with the current request code
-        operationsOnPermission.put(lastEventId, operation);
+        if(activityBinding != null && activityBinding.getActivity() != null) {
+            // Store the operation with the current request code
+            operationsOnPermission.put(lastEventId, operation);
 
-        ActivityCompat.requestPermissions(
-                activityBinding.getActivity(),
-                permissionsNeeded.toArray(new String[0]),
-                lastEventId);
+            ActivityCompat.requestPermissions(
+                    activityBinding.getActivity(),
+                    permissionsNeeded.toArray(new String[0]),
+                    lastEventId);
 
-        lastEventId++;
+            lastEventId++;
+        }
     }
 
 
